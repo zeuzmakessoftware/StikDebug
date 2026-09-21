@@ -55,7 +55,16 @@ struct DDIManifest {
             if result != .orderedSame { return result }
         }
         if left[3].isEmpty != right[3].isEmpty { return left[3].isEmpty ? .orderedDescending : .orderedAscending }
-        return lhs.compare(rhs, options: .numeric)
+        // Seed build numbers carry a 5000 offset; release candidates drop it
+        // while sometimes retaining a suffix (27A266a follows 27A5228h).
+        func buildNumber(_ part: String) -> Int {
+            let number = Int(part) ?? 0
+            return (5000..<10000).contains(number) ? number - 5000 : number
+        }
+        let leftBuild = buildNumber(left[2])
+        let rightBuild = buildNumber(right[2])
+        if leftBuild != rightBuild { return leftBuild > rightBuild ? .orderedDescending : .orderedAscending }
+        return left[3].compare(right[3])
     }
 
     /// Supports both normalized downloads and Xcode's Restore directory filenames.

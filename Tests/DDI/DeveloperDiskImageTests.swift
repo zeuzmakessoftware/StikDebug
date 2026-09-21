@@ -183,6 +183,7 @@ struct DeveloperDiskImageTests {
         #expect(DDIManifest.compareBuilds("27A123", "27A5228h") == .orderedDescending)
         #expect(DDIManifest.compareBuilds("27A5228h", "27A123") == .orderedAscending)
         #expect(DDIManifest.compareBuilds("27B5001a", "27A123") == .orderedDescending)
+        #expect(DDIManifest.compareBuilds("27A266a", "27A5228h") == .orderedDescending)
     }
 
     @Test func testImportedImageSurvivesNextLaunchWithoutNetwork() async throws {
