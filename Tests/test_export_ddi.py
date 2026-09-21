@@ -63,6 +63,29 @@ class ExportDDITests(unittest.TestCase):
             module.export(self.restore, self.output)
         self.assertEqual(sentinel.read_text(), "keep")
 
+    def test_recent_build_without_target_identity_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no identity for chip 0x8160, board 0xa"):
+            module.export(self.restore, self.output, required_identity=(0x8160, 0xA))
+        self.assertFalse(self.output.exists())
+
+    def test_target_identity_payloads_are_verified(self):
+        identity = self.manifest["BuildIdentities"][0]
+        identity.update(ApChipID="0x8160", ApBoardID="0x0A")
+        self.save_manifest()
+        module.export(self.restore, self.output, required_identity=(0x8160, 0xA))
+        self.assertTrue(self.output.exists())
+
+    def test_other_identity_cannot_hide_corrupt_target_payload(self):
+        import copy
+        target = copy.deepcopy(self.manifest["BuildIdentities"][0])
+        target.update(ApChipID=0x8160, ApBoardID=0xA)
+        target["Manifest"]["PersonalizedDMG"]["Digest"] = b"wrong"
+        self.manifest["BuildIdentities"].append(target)
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "No personalized build identity"):
+            module.export(self.restore, self.output, required_identity=(0x8160, 0xA))
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
