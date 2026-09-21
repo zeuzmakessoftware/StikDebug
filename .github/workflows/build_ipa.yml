@@ -40,8 +40,11 @@ jobs:
       - name: Refresh Apple hardware support
         run: xcodebuild -runFirstLaunch -checkForNewerComponents
 
-      - name: Export a developer image with iPhone 18 Pro support
-        run: python3 scripts/export_ddi.py --output build/BundledDDI --required-identity 0x8160 0x0A
+      - name: Export the legacy developer image
+        run: python3 scripts/export_ddi.py --output build/BundledDDI
+
+      - name: Prepare the generic image tested on iPhone19,2
+        run: python3 scripts/prepare_cryptex_ddi.py --output build/BundledCryptexDDI
 
       - name: 3. Compile Project Archive
         run: |
@@ -63,6 +66,7 @@ jobs:
         run: |
           cp -R build/StikDebug.xcarchive/Products/Applications/StikDebug.app .
           cp -R build/BundledDDI StikDebug.app/BundledDDI
+          cp -R build/BundledCryptexDDI StikDebug.app/BundledCryptexDDI
           mkdir -p Payload
           cp -R StikDebug.app Payload/
           zip -r StikDebug.ipa Payload
