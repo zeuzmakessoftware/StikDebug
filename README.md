@@ -25,28 +25,43 @@
 
 ## This fork: iOS 27 developer images
 
-This fork addresses the developer disk image failures reported in
-[upstream #464](https://github.com/StikDebug/StikDebug/issues/464) and
-[#465](https://github.com/StikDebug/StikDebug/issues/465). The upstream download mirror
-can lag behind new iOS releases and device models. The fork's build workflow extracts
-the personalized DDI from Xcode 27 after checking for Apple's hardware support
-updates, and includes it in the IPA. Export requires a verified payload for chip
-`0x8160`, board `0x0A`, so a build number alone cannot pass the compatibility check.
+This fork fixes the developer disk image mounting failure reproduced on
+`iPhone19,2` running iOS 27.0, related to [upstream #464](https://github.com/StikDebug/StikDebug/issues/464)
+and [#465](https://github.com/StikDebug/StikDebug/issues/465).
 
-- Downloads are installed as complete sets after checking the image and trust cache against the manifest's SHA-384 digests.
-- Cached images are checked for updates once per launch. Offline launches retain a verified cached image.
-- Newer bundled images are preferred over older mirror images, including release candidates versus earlier betas.
-- **Settings → Advanced → Import DDI Folder** accepts an exported DDI folder or Xcode's `iOS_DDI/Restore` folder. Imported images stay selected across launches.
-- A `BadBuildManifest` failure triggers at most one automatic refresh and retry. If no compatible image is available, the error explains how to import one.
+The tested phone reports chip `0x8160`, board `0x0A`. Both Xcode 27.0 RC's
+`27A266a` image and Xcode 27.1 beta's `27A9269` image lack that legacy personalized
+build identity. Updating those files alone did not resolve the failure.
 
-**Validation status:** 15 Swift tests and 8 Python tests pass. The initial
-`a702641` IPA was installed over the existing app and launched on an `iPhone19,2`
-running iOS 27.0. The new import control and mount-failure explanation were
-verified. DDI mounting still fails: the bundled `27A266a` image has no identity for
-chip `0x8160`, board `0x0A`. That artifact does **not** fix mounting on this hardware,
-and successful JIT has not been verified. The hardware-update check supplied no
-matching image, so the guarded build stops instead of publishing another
-incompatible IPA. A newer Apple image with that identity is still required.
+On iOS 27, this fork uses Apple's **Cryptex mounting protocol** through
+[idevice 0.1.68](https://github.com/jkcoxson/idevice/releases/tag/v0.1.68). It bundles
+a generic DDI, verifies all four payloads against the manifest's SHA-384 digests,
+requests Apple's personalization ticket, and confirms that the developer image
+was installed. This protocol does not require a legacy chip/board entry.
+The library archive is checksum-pinned and the image source is pinned to an
+immutable revision. No device-specific pairing records or tickets are bundled.
+
+Older systems, and devices without the Cryptex service, retain the personalized
+mounting path:
+
+- Downloads are published as complete, verified sets.
+- Cached images are checked once per launch; offline launches retain a verified image.
+- Newer bundled images take precedence over older mirror images.
+- **Settings → Advanced → Import DDI Folder** imports an image for the legacy path. On iOS 27 with Cryptex support, the bundled generic image takes precedence.
+- A legacy `BadBuildManifest` failure gets at most one automatic image refresh and retry.
+
+**Device validation, September 20, 2026:** build `b7b2589` was installed over the
+existing StikDebug app. After removing the temporary Mac-mounted DDI and verifying
+that no DDI remained, StikDebug independently personalized, transferred, and
+mounted the generic image in about two seconds. The device confirmed
+`com.apple.MobileAsset.DDI` version `27.1.5228.8` mounted at `/System/Developer`.
+StikDebug then enabled JIT for a fresh MeloNX process; the existing game reached
+its title screen at approximately 60 FPS through iPhone Mirroring.
+
+[The full IPA build passed](https://github.com/zeuzmakessoftware/StikDebug/actions/runs/35564201559),
+including **19 Swift tests and 8 Python tests**. This verifies the tested device
+and OS combination; other iOS 27 models and later updates still need device tests.
+The earlier `a702641` diagnostic IPA does not include the working Cryptex fix.
 
 ## Features
 - **JIT:** Enable Just In Time compilation for sideloaded apps that have the `get-task-allow` entitlement.
@@ -60,9 +75,11 @@ incompatible IPA. A newer Apple image with that identity is still required.
 
 ## Download
 Open this fork's [Build Debug IPA workflow](https://github.com/zeuzmakessoftware/StikDebug/actions/workflows/build_ipa.yml),
-select a successful run, and download the `StikDebug-<commit>.ipa` artifact. It is
+use the [device-tested build](https://github.com/zeuzmakessoftware/StikDebug/actions/runs/35564201559)
+or a newer successful run, and download the `StikDebug-<commit>.ipa` artifact. It is
 unsigned; install it with your usual signing/sideloading tool. The separate
-`StikDebug-Xcode27-DDI` artifact contains the importable image folder.
+`StikDebug-Xcode27-DDI` artifact contains the legacy personalized image folder.
+The working generic image is already bundled inside the IPA; no manual import is needed on the tested iOS 27 phone.
 
 Upstream StikDebug releases do not include this fork's changes.
 
@@ -73,9 +90,12 @@ Upstream StikDebug releases do not include this fork's changes.
 | 1.0 – 17.3.X             | Not supported        | Uses Different Connection Protocols                                   |
 | 17.4 – 18.x              | Fully supported      | Stable                                                                |
 | 26.x                    | Upstream support     | Limited app availability; developers need to update their apps.        |
-| 27.x                    | Partial; mounting blocked on tested hardware | Recovery UI works; the available DDI lacks the tested iPhone's identity. |
+| 27.x                    | Mounting and JIT verified on iPhone19,2 / 27.0 | Uses the bundled generic Cryptex image; other models are not yet device-tested. |
 
-### Import a current Xcode image
+### Import a legacy personalized Xcode image
+
+This is for the personalized mounting path. The tested iOS 27 phone uses the
+bundled generic image automatically and does not need this procedure.
 
 1. Download and unzip `StikDebug-Xcode27-DDI` from a successful build, or export from a Mac with the latest Xcode 27 installed and initialized:
 
@@ -86,8 +106,8 @@ Upstream StikDebug releases do not include this fork's changes.
    To choose an expanded image explicitly, add `--source /Library/Developer/DeveloperDiskImages/iOS_DDI/Restore`.
    The exporter rejects pre-Xcode-27 builds by default and verifies payload digests.
    Add `--required-identity 0x8160 0x0A` to require the tested iPhone's hardware.
-   If it is missing, use `xcodebuild -runFirstLaunch -checkForNewerComponents` to
-   check for Apple's newer hardware support, then export again.
+   This optional check deliberately fails for the tested phone with the inspected
+   Xcode 27.0/27.1 images; use this fork's complete IPA and Cryptex path for that phone.
 2. Transfer the entire output folder to Files on the iPhone or iPad.
 3. In StikDebug, open **Settings → Advanced → Import DDI Folder** and choose that folder.
 4. Connect the loopback VPN and retry. If a DDI was already mounted, reboot the device first so it can mount the replacement.
@@ -157,7 +177,8 @@ StikDebug enables **JIT** for sideloaded apps on iOS 17.4+ without needing a com
    cd StikDebug
    ```
 
-2. **Open in Xcode**
+2. **Prepare the native library, then open in Xcode**
+   - Run `python3 scripts/prepare_idevice.py` to download and verify idevice 0.1.68.
    - Launch Xcode
    - Open `StikDebug.xcodeproj`
 
@@ -174,9 +195,12 @@ StikDebug enables **JIT** for sideloaded apps on iOS 17.4+ without needing a com
 
 After install, follow the JIT setup steps above (pairing import, etc.).
 
-The GitHub workflow adds `BundledDDI` to the unsigned app during IPA packaging.
-For a direct Xcode build, import an exported image using Settings after installation.
-The app's deployment target remains iOS 17.4.
+The GitHub workflow produces the complete IPA, including both `BundledDDI` and
+`BundledCryptexDDI`. For a direct Xcode build, prepare the generic image with
+`python3 scripts/prepare_cryptex_ddi.py --output build/BundledCryptexDDI` and include
+that folder as a folder resource at the app bundle root. Importing a personalized
+image cannot substitute for that resource on the tested phone. The app's deployment
+target remains iOS 17.4.
 
 ### Automated checks
 
