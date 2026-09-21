@@ -58,17 +58,20 @@ final class MountingProgress: ObservableObject {
             do {
                 let directory = try await DeveloperDiskImageService.shared.prepare()
                 guard TunnelManager.shared.isConnected else { return }
-                let mountError = await Task.detached(priority: .utility) {
-                    guard isPairing() else { return "Import a valid pairing file before mounting a DDI." }
-                    if isMounted() { return nil as String? }
-                    return mountPersonalDDI(
-                        imagePath: directory.appendingPathComponent("Image.dmg").path,
-                        trustcachePath: directory.appendingPathComponent("Image.dmg.trustcache").path,
-                        manifestPath: directory.appendingPathComponent("BuildManifest.plist").path
-                    )
-                }.value
+                var mountError = await Self.mount(directory)
+                if let error = mountError, DDIMountFailure.needsNewImage(error) {
+                    do {
+                        let refreshed = try await DeveloperDiskImageService.shared.refreshAfterMountFailure()
+                        if refreshed != directory, TunnelManager.shared.isConnected {
+                            mountProgress = 0
+                            mountError = await Self.mount(refreshed)
+                        }
+                    } catch {
+                        mountError = "\(mountError ?? "")\nImage update failed: \(error.localizedDescription)"
+                    }
+                }
                 if let mountError {
-                    showAlert(title: "DDI Mount Failed", message: mountError, showOk: true, showTryAgain: true) { shouldTryAgain in
+                    showAlert(title: "DDI Mount Failed", message: DDIMountFailure.recoveryMessage(for: mountError), showOk: true, showTryAgain: true) { shouldTryAgain in
                         if shouldTryAgain {
                             self.pubMount()
                         }
@@ -81,6 +84,18 @@ final class MountingProgress: ObservableObject {
                 showAlert(title: "DDI Unavailable", message: error.localizedDescription, showOk: true)
             }
         }
+    }
+
+    private static func mount(_ directory: URL) async -> String? {
+        await Task.detached(priority: .utility) {
+            guard isPairing() else { return "Import a valid pairing file before mounting a DDI." }
+            if isMounted() { return nil as String? }
+            return mountPersonalDDI(
+                imagePath: directory.appendingPathComponent("Image.dmg").path,
+                trustcachePath: directory.appendingPathComponent("Image.dmg.trustcache").path,
+                manifestPath: directory.appendingPathComponent("BuildManifest.plist").path
+            )
+        }.value
     }
 }
 

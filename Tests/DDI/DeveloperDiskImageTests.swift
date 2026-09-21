@@ -193,11 +193,20 @@ struct DeveloperDiskImageTests {
             let server = Server(try Fixture())
             let first = service(root, server)
             try await first.importDirectory(source.deletingLastPathComponent())
+            _ = try await first.refreshAfterMountFailure()
             let directory = try await service(root, server).prepare()
             #expect(try Data(contentsOf: directory.appendingPathComponent("Image.dmg")) == fixture.files["Image.dmg"])
             let requests = await server.requests
             #expect(requests.isEmpty)
         }
+    }
+
+    @Test func testOnlyManifestCompatibilityErrorsRequestRefresh() {
+        #expect(DDIMountFailure.needsNewImage("BadBuildManifest"))
+        #expect(DDIMountFailure.needsNewImage("No matching build identity for device"))
+        #expect(!DDIMountFailure.needsNewImage("Connection reset by peer"))
+        #expect(DDIMountFailure.recoveryMessage(for: "BadBuildManifest").contains("Import DDI Folder"))
+        #expect(DDIMountFailure.recoveryMessage(for: "Connection reset") == "Connection reset")
     }
 
     @Test func testBrokenImportPreservesInstalledImage() async throws {

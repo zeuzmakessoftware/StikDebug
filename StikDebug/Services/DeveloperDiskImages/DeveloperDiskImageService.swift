@@ -69,6 +69,13 @@ actor DeveloperDiskImageService {
         return directory
     }
 
+    func refreshAfterMountFailure() async throws -> URL {
+        if let installed = currentInstallation(), installed.source == "imported" {
+            return root.appendingPathComponent(installed.directory, isDirectory: true)
+        }
+        return try await redownload()
+    }
+
     private func update(force: Bool, progress: Progress?) async throws -> URL {
         guard !isUpdating else { throw DDIDownloadError.updateInProgress }
         isUpdating = true
