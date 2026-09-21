@@ -5,6 +5,7 @@
 
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 private enum SettingsLinks {
     static let githubStars = URL(string: "https://github.com/StikDebug/StikDebug/stargazers")!
@@ -25,6 +26,7 @@ struct SettingsView: View {
     @State private var isImportingFile = false
     @State private var pairingImportMessage: (text: String, isError: Bool)?
     @State private var showDDIConfirmation = false
+    @State private var isShowingDDIImporter = false
     @State private var isRedownloadingDDI = false
     @State private var ddiDownloadProgress: Double = 0.0
     @State private var ddiStatusMessage: String = ""
@@ -160,6 +162,17 @@ struct SettingsView: View {
                     Button { showDDIConfirmation = true } label: {
                         Label("Redownload DDI", systemImage: "arrow.down.circle")
                     }.foregroundStyle(.primary).disabled(isRedownloadingDDI)
+                    Button { isShowingDDIImporter = true } label: {
+                        Label("Import DDI Folder", systemImage: "folder.badge.plus")
+                    }
+                    .foregroundStyle(.primary)
+                    .disabled(isRedownloadingDDI)
+                    .fileImporter(isPresented: $isShowingDDIImporter, allowedContentTypes: [.folder]) { result in
+                        switch result {
+                        case .success(let url): importDDIFolder(url)
+                        case .failure(let error): ddiResultMessage = (error.localizedDescription, true)
+                        }
+                    }
                     if isRedownloadingDDI {
                         VStack(alignment: .leading, spacing: 4) {
                             ProgressView(value: ddiDownloadProgress, total: 1.0)
@@ -222,12 +235,12 @@ struct SettingsView: View {
             }
         }
         .confirmationDialog("Redownload DDI Files?", isPresented: $showDDIConfirmation, titleVisibility: .visible) {
-            Button("Redownload", role: .destructive) {
+            Button("Redownload") {
                 redownloadDDIPressed()
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Existing DDI files will be removed before downloading fresh copies.")
+            Text("Current files are kept until a complete replacement is verified. An image newer than the download source will be kept.")
         }
     }
 
@@ -243,6 +256,28 @@ struct SettingsView: View {
     }
 
     // MARK: - Business Logic
+
+    private func importDDIFolder(_ url: URL) {
+        guard !isRedownloadingDDI else { return }
+        isRedownloadingDDI = true
+        ddiDownloadProgress = 0
+        ddiStatusMessage = "Checking developer disk image…"
+        ddiResultMessage = nil
+        Task { @MainActor in
+            let access = url.startAccessingSecurityScopedResource()
+            defer {
+                if access { url.stopAccessingSecurityScopedResource() }
+                isRedownloadingDDI = false
+            }
+            do {
+                let build = try await DeveloperDiskImageService.shared.importDirectory(url)
+                ddiResultMessage = ("Imported DDI build \(build). If a DDI is already mounted, reboot your device to use the new image.", false)
+                MountingProgress.shared.pubMount()
+            } catch {
+                ddiResultMessage = ("Import failed: \(error.localizedDescription)", true)
+            }
+        }
+    }
 
     private func openAppFolder() {
         guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
@@ -271,6 +306,7 @@ struct SettingsView: View {
                 await MainActor.run {
                     isRedownloadingDDI = false
                     ddiResultMessage = ("DDI files refreshed successfully.", false)
+                    MountingProgress.shared.pubMount()
                 }
             } catch {
                 await MainActor.run {

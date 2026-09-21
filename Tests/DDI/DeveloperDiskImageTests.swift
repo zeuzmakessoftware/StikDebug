@@ -184,4 +184,60 @@ struct DeveloperDiskImageTests {
         #expect(DDIManifest.compareBuilds("27A5228h", "27A123") == .orderedAscending)
         #expect(DDIManifest.compareBuilds("27B5001a", "27A123") == .orderedDescending)
     }
+
+    @Test func testImportedImageSurvivesNextLaunchWithoutNetwork() async throws {
+        try await withDirectory { root in
+            let source = root.appendingPathComponent("source/Restore")
+            let fixture = try Fixture(build: "27A200")
+            try fixture.write(to: source)
+            let server = Server(try Fixture())
+            let first = service(root, server)
+            try await first.importDirectory(source.deletingLastPathComponent())
+            let directory = try await service(root, server).prepare()
+            #expect(try Data(contentsOf: directory.appendingPathComponent("Image.dmg")) == fixture.files["Image.dmg"])
+            let requests = await server.requests
+            #expect(requests.isEmpty)
+        }
+    }
+
+    @Test func testBrokenImportPreservesInstalledImage() async throws {
+        try await withDirectory { root in
+            let server = Server(try Fixture())
+            let service = service(root, server)
+            let original = try await service.prepare()
+            let source = root.appendingPathComponent("source")
+            try Fixture().write(to: source)
+            try Data("wrong".utf8).write(to: source.appendingPathComponent("Image.dmg"))
+            do {
+                try await service.importDirectory(source)
+                Issue.record("Corrupt imports must be rejected")
+            } catch DDIDownloadError.mismatchedFiles { }
+            let current = try await service.prepare()
+            #expect(current == original)
+        }
+    }
+
+    @Test func testImportResolvesOriginalXcodeFilenames() async throws {
+        try await withDirectory { root in
+            let source = root.appendingPathComponent("source")
+            try Fixture().write(to: source)
+            let manifestURL = source.appendingPathComponent("BuildManifest.plist")
+            var manifest = try PropertyListSerialization.propertyList(from: Data(contentsOf: manifestURL), format: nil) as! [String: Any]
+            var identities = manifest["BuildIdentities"] as! [[String: Any]]
+            var entries = identities[0]["Manifest"] as! [String: [String: Any]]
+            entries["PersonalizedDMG"]?["Info"] = ["Path": "022-new.dmg"]
+            entries["LoadableTrustCache"]?["Info"] = ["Path": "022-new.dmg.trustcache"]
+            identities[0]["Manifest"] = entries
+            manifest["BuildIdentities"] = identities
+            try PropertyListSerialization.data(fromPropertyList: manifest, format: .binary, options: 0).write(to: manifestURL)
+            try FileManager.default.moveItem(at: source.appendingPathComponent("Image.dmg"), to: source.appendingPathComponent("022-new.dmg"))
+            try FileManager.default.moveItem(at: source.appendingPathComponent("Image.dmg.trustcache"), to: source.appendingPathComponent("022-new.dmg.trustcache"))
+            let service = service(root, Server(try Fixture()))
+            let build = try await service.importDirectory(source)
+            #expect(build == "27A123")
+            let directory = try await service.prepare()
+            let parsed = try DDIManifest(data: Data(contentsOf: directory.appendingPathComponent("BuildManifest.plist")))
+            try parsed.validate(in: directory)
+        }
+    }
 }

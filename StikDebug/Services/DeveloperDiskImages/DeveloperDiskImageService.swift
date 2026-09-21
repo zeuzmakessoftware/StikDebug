@@ -48,6 +48,19 @@ actor DeveloperDiskImageService {
         _ = try await prepare()
     }
 
+    /// Import Xcode's Restore folder (or the normalized folder exported by this fork).
+    @discardableResult
+    func importDirectory(_ selectedDirectory: URL) throws -> String {
+        guard preparation == nil, !isUpdating else { throw DDIDownloadError.updateInProgress }
+        try prepareStorage()
+        let restore = selectedDirectory.appendingPathComponent("Restore", isDirectory: true)
+        let source = fileManager.fileExists(atPath: restore.appendingPathComponent("BuildManifest.plist").path)
+            ? restore : selectedDirectory
+        let directory = try install(from: source, source: "imported")
+        preparedDirectory = directory
+        return try readManifest(in: directory).buildVersion
+    }
+
     @discardableResult
     func redownload(progressHandler: Progress? = nil) async throws -> URL {
         guard preparation == nil else { throw DDIDownloadError.updateInProgress }
