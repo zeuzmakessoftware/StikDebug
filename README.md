@@ -23,6 +23,24 @@
   <br />
 </h6>
 
+## This fork: iOS 27 developer images
+
+This fork addresses the developer disk image failures reported in
+[upstream #464](https://github.com/StikDebug/StikDebug/issues/464) and
+[#465](https://github.com/StikDebug/StikDebug/issues/465). The upstream download mirror
+can lag behind new iOS releases and device models. The fork's build workflow extracts
+the personalized DDI from Xcode 27 and includes it in the IPA.
+
+- Downloads are installed as complete sets after checking the image and trust cache against the manifest's SHA-384 digests.
+- Cached images are checked for updates once per launch. Offline launches retain a verified cached image.
+- Newer bundled images are preferred over older mirror images, including release candidates versus earlier betas.
+- **Settings → Advanced → Import DDI Folder** accepts an exported DDI folder or Xcode's `iOS_DDI/Restore` folder. Imported images stay selected across launches.
+- A `BadBuildManifest` failure triggers at most one automatic refresh and retry. If no compatible image is available, the error explains how to import one.
+
+**Validation status:** automated storage, integrity, import, and export tests are included.
+Physical-device DDI mounting and JIT on iOS 27 still require verification; an image
+must support the particular device, and the target app must support iOS 27 JIT.
+
 ## Features
 - **JIT:** Enable Just In Time compilation for sideloaded apps that have the `get-task-allow` entitlement.
 - **App Launching:** Launch every app installed on your device.
@@ -34,14 +52,12 @@
 - **Location Simulator:** Simulate the GPS location of your device.
 
 ## Download
-> [!NOTE]
-> **Notice:** StikDebug is no longer available on the App Store. Please use the official download methods below.
+Open this fork's [Build Debug IPA workflow](https://github.com/zeuzmakessoftware/StikDebug/actions/workflows/build_ipa.yml),
+select a successful run, and download the `StikDebug-<commit>.ipa` artifact. It is
+unsigned; install it with your usual signing/sideloading tool. The separate
+`StikDebug-Xcode27-DDI` artifact contains the importable image folder.
 
-<h3 align="center">
-<a href="https://altdirect.app/?url=https://stikdebug.xyz/index.json" target="_blank"><img src="https://altdirect.app/assets/png/AltSource_Blue.png" alt="Add AltSource" width="200"></a>
-&nbsp;
-<a href="https://github.com/StikDebug/StikDebug/releases/download/3.1.9/StikDebug-3.1.9.ipa" target="_blank"><img src="https://altdirect.app/assets/png/Download_Blue.png" alt="Download .ipa" width="200"></a>
-</h3>
+Upstream StikDebug releases do not include this fork's changes.
 
 ## Compatibility
 
@@ -49,7 +65,27 @@
 |--------------------------|----------------------|-----------------------------------------------------------------------|
 | 1.0 – 17.3.X             | Not supported        | Uses Different Connection Protocols                                   |
 | 17.4 – 18.x              | Fully supported      | Stable                                                                |
-| 26.0+              | Supported            | Limited App Availability (Developers need to update their apps to work.) |
+| 26.x                    | Upstream support     | Limited app availability; developers need to update their apps.        |
+| 27.x                    | Device testing needed | This fork supplies an Xcode 27 DDI and image update/import recovery.   |
+
+### Import a current Xcode image
+
+1. Download and unzip `StikDebug-Xcode27-DDI` from a successful build, or export from a Mac with the latest Xcode 27 installed and initialized:
+
+   ```bash
+   python3 scripts/export_ddi.py --output /tmp/StikDebug-DDI
+   ```
+
+   To choose an expanded image explicitly, add `--source /Library/Developer/DeveloperDiskImages/iOS_DDI/Restore`.
+   The exporter rejects pre-Xcode-27 builds by default and verifies payload digests.
+2. Transfer the entire output folder to Files on the iPhone or iPad.
+3. In StikDebug, open **Settings → Advanced → Import DDI Folder** and choose that folder.
+4. Connect the loopback VPN and retry. If a DDI was already mounted, reboot the device first so it can mount the replacement.
+
+Keep `BuildManifest.plist`, `Image.dmg`, and `Image.dmg.trustcache` together. A pairing
+file is separate from the developer image. If the newest image still produces
+`BadBuildManifest`, collect the device model, iOS version, DDI build, and full error
+for further investigation; repeated pairing imports cannot add a missing build identity.
 
 ## How to Enable JIT
 
@@ -99,7 +135,7 @@ StikDebug enables **JIT** for sideloaded apps on iOS 17.4+ without needing a com
 
 ### Requirements
 - macOS (latest recommended)
-- Xcode 16+ (Xcode 26+ preferred for iOS 26+ support)
+- Xcode 27 for this fork's bundled developer image workflow
 - iOS device on iOS 17.4+ (for testing)
 - Git
 - Basic Xcode/Swift knowledge
@@ -107,7 +143,7 @@ StikDebug enables **JIT** for sideloaded apps on iOS 17.4+ without needing a com
 ### Steps
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/StikDebug/StikDebug.git
+   git clone https://github.com/zeuzmakessoftware/StikDebug.git
    cd StikDebug
    ```
 
@@ -127,6 +163,22 @@ StikDebug enables **JIT** for sideloaded apps on iOS 17.4+ without needing a com
    - Trust the certificate on device: Settings → General → VPN & Device Management
 
 After install, follow the JIT setup steps above (pairing import, etc.).
+
+The GitHub workflow adds `BundledDDI` to the unsigned app during IPA packaging.
+For a direct Xcode build, import an exported image using Settings after installation.
+The app's deployment target remains iOS 17.4.
+
+### Automated checks
+
+```bash
+swift test
+python3 -m unittest discover -s Tests -p 'test_*.py'
+```
+
+The Swift package tests the same DDI service files used by the app, independently
+of its device-only native library. The workflow also archives the full iOS app
+with Xcode 27. Neither check substitutes for mounting a DDI and enabling JIT on a
+physical device.
 
 ## Contributing
 
