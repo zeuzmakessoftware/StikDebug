@@ -39,11 +39,14 @@ updates, and includes it in the IPA. Export requires a verified payload for chip
 - **Settings → Advanced → Import DDI Folder** accepts an exported DDI folder or Xcode's `iOS_DDI/Restore` folder. Imported images stay selected across launches.
 - A `BadBuildManifest` failure triggers at most one automatic refresh and retry. If no compatible image is available, the error explains how to import one.
 
-**Validation status:** automated storage, integrity, import, and export tests are included.
-Physical-device DDI mounting and JIT on iOS 27 still require verification; an image
-must support the particular device, and the target app must support iOS 27 JIT.
-The initial `a702641` IPA bundles DDI `27A266a`, which lacks the identity needed by
-the tested `iPhone19,2`. That artifact does **not** fix mounting on this hardware.
+**Validation status:** 15 Swift tests and 8 Python tests pass. The initial
+`a702641` IPA was installed over the existing app and launched on an `iPhone19,2`
+running iOS 27.0. The new import control and mount-failure explanation were
+verified. DDI mounting still fails: the bundled `27A266a` image has no identity for
+chip `0x8160`, board `0x0A`. That artifact does **not** fix mounting on this hardware,
+and successful JIT has not been verified. The hardware-update check supplied no
+matching image, so the guarded build stops instead of publishing another
+incompatible IPA. A newer Apple image with that identity is still required.
 
 ## Features
 - **JIT:** Enable Just In Time compilation for sideloaded apps that have the `get-task-allow` entitlement.
@@ -70,7 +73,7 @@ Upstream StikDebug releases do not include this fork's changes.
 | 1.0 – 17.3.X             | Not supported        | Uses Different Connection Protocols                                   |
 | 17.4 – 18.x              | Fully supported      | Stable                                                                |
 | 26.x                    | Upstream support     | Limited app availability; developers need to update their apps.        |
-| 27.x                    | Device testing needed | This fork supplies an Xcode 27 DDI and image update/import recovery.   |
+| 27.x                    | Partial; mounting blocked on tested hardware | Recovery UI works; the available DDI lacks the tested iPhone's identity. |
 
 ### Import a current Xcode image
 
