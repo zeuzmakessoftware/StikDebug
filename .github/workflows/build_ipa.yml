@@ -34,8 +34,11 @@ jobs:
           swift test
           python3 -m unittest discover -s Tests -p 'test_*.py'
 
-      - name: Export the Xcode 27 personalized developer image
-        run: python3 scripts/export_ddi.py --output build/BundledDDI
+      - name: Refresh Apple hardware support
+        run: xcodebuild -runFirstLaunch -checkForNewerComponents
+
+      - name: Export a developer image with iPhone 18 Pro support
+        run: python3 scripts/export_ddi.py --output build/BundledDDI --required-identity 0x8160 0x0A
 
       - name: 3. Compile Project Archive
         run: |

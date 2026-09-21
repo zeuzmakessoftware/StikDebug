@@ -29,7 +29,9 @@ This fork addresses the developer disk image failures reported in
 [upstream #464](https://github.com/StikDebug/StikDebug/issues/464) and
 [#465](https://github.com/StikDebug/StikDebug/issues/465). The upstream download mirror
 can lag behind new iOS releases and device models. The fork's build workflow extracts
-the personalized DDI from Xcode 27 and includes it in the IPA.
+the personalized DDI from Xcode 27 after checking for Apple's hardware support
+updates, and includes it in the IPA. Export requires a verified payload for chip
+`0x8160`, board `0x0A`, so a build number alone cannot pass the compatibility check.
 
 - Downloads are installed as complete sets after checking the image and trust cache against the manifest's SHA-384 digests.
 - Cached images are checked for updates once per launch. Offline launches retain a verified cached image.
@@ -40,6 +42,8 @@ the personalized DDI from Xcode 27 and includes it in the IPA.
 **Validation status:** automated storage, integrity, import, and export tests are included.
 Physical-device DDI mounting and JIT on iOS 27 still require verification; an image
 must support the particular device, and the target app must support iOS 27 JIT.
+The initial `a702641` IPA bundles DDI `27A266a`, which lacks the identity needed by
+the tested `iPhone19,2`. That artifact does **not** fix mounting on this hardware.
 
 ## Features
 - **JIT:** Enable Just In Time compilation for sideloaded apps that have the `get-task-allow` entitlement.
@@ -78,6 +82,9 @@ Upstream StikDebug releases do not include this fork's changes.
 
    To choose an expanded image explicitly, add `--source /Library/Developer/DeveloperDiskImages/iOS_DDI/Restore`.
    The exporter rejects pre-Xcode-27 builds by default and verifies payload digests.
+   Add `--required-identity 0x8160 0x0A` to require the tested iPhone's hardware.
+   If it is missing, use `xcodebuild -runFirstLaunch -checkForNewerComponents` to
+   check for Apple's newer hardware support, then export again.
 2. Transfer the entire output folder to Files on the iPhone or iPad.
 3. In StikDebug, open **Settings → Advanced → Import DDI Folder** and choose that folder.
 4. Connect the loopback VPN and retry. If a DDI was already mounted, reboot the device first so it can mount the replacement.
