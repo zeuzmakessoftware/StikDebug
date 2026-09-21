@@ -97,3 +97,4 @@ iOSInjectionProject/
 .vscode 
 .build/
 .swiftpm/
+__pycache__/

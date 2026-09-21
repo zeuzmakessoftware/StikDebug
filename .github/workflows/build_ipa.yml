@@ -14,7 +14,7 @@ permissions:
 jobs:
   build:
     name: Build IPA
-    runs-on: macos-latest
+    runs-on: xcode-27
     outputs:
       version: ${{ steps.version.outputs.version }}
     env:
@@ -27,7 +27,15 @@ jobs:
       - name: 2. Configure Xcode Environment
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.6'
+          xcode-version: '27.0'
+
+      - name: Test DDI updates and imports
+        run: |
+          swift test
+          python3 -m unittest discover -s Tests -p 'test_*.py'
+
+      - name: Export the Xcode 27 personalized developer image
+        run: python3 scripts/export_ddi.py --output build/BundledDDI
 
       - name: 3. Compile Project Archive
         run: |
@@ -48,6 +56,7 @@ jobs:
       - name: 4. Package .app into .ipa
         run: |
           cp -R build/StikDebug.xcarchive/Products/Applications/StikDebug.app .
+          cp -R build/BundledDDI StikDebug.app/BundledDDI
           mkdir -p Payload
           cp -R StikDebug.app Payload/
           zip -r StikDebug.ipa Payload
@@ -67,6 +76,14 @@ jobs:
         with:
           path: ${{ steps.artifact.outputs.file_name }}
           archive: false
+          retention-days: 90
+
+      - name: Store importable Xcode DDI
+        if: env.UPLOAD_IPA == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: StikDebug-Xcode27-DDI
+          path: build/BundledDDI
           retention-days: 90
 
       - name: Read version
