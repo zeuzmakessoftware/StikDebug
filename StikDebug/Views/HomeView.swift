@@ -118,7 +118,7 @@ struct HomeView: View {
     }
 
     private func refreshMountStatusIfNeeded() {
-        guard mounting.mountingThread == nil, !mounting.coolisMounted else {
+        guard !mounting.isMounting, !mounting.coolisMounted else {
             return
         }
         MountingProgress.shared.checkforMounted()

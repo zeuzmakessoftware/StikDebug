@@ -10,7 +10,7 @@ final class MountingProgress: ObservableObject {
     static let shared = MountingProgress()
 
     @Published private(set) var mountProgress: Double = 0.0
-    @Published private(set) var mountingThread: Thread?
+    @Published private(set) var isMounting = false
     @Published private(set) var coolisMounted: Bool = false
 
     private let mountCheckLock = NSLock()
@@ -50,37 +50,23 @@ final class MountingProgress: ObservableObject {
     }
 
     func pubMount() {
-        guard TunnelManager.shared.isConnected else { return }
-
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.mount()
-        }
-    }
-
-    private func mount() {
-        let currentlyMounted = isMounted()
-        DispatchQueue.main.async {
-            self.coolisMounted = currentlyMounted
-        }
-
-        guard isPairing(), !currentlyMounted else {
-            return
-        }
-
-        if let mountingThread {
-            mountingThread.cancel()
-            self.mountingThread = nil
-        }
-
-        let thread = Thread { [weak self] in
-            guard let self else { return }
-            let mountError = mountPersonalDDI(
-                imagePath: URL.documentsDirectory.appendingPathComponent("DDI/Image.dmg").path,
-                trustcachePath: URL.documentsDirectory.appendingPathComponent("DDI/Image.dmg.trustcache").path,
-                manifestPath: URL.documentsDirectory.appendingPathComponent("DDI/BuildManifest.plist").path
-            )
-
-            DispatchQueue.main.async {
+        Task { @MainActor in
+            guard TunnelManager.shared.isConnected, !isMounting, !coolisMounted else { return }
+            isMounting = true
+            mountProgress = 0
+            defer { isMounting = false }
+            do {
+                let directory = try await DeveloperDiskImageService.shared.prepare()
+                guard TunnelManager.shared.isConnected else { return }
+                let mountError = await Task.detached(priority: .utility) {
+                    guard isPairing() else { return "Import a valid pairing file before mounting a DDI." }
+                    if isMounted() { return nil as String? }
+                    return mountPersonalDDI(
+                        imagePath: directory.appendingPathComponent("Image.dmg").path,
+                        trustcachePath: directory.appendingPathComponent("Image.dmg.trustcache").path,
+                        manifestPath: directory.appendingPathComponent("BuildManifest.plist").path
+                    )
+                }.value
                 if let mountError {
                     showAlert(title: "DDI Mount Failed", message: mountError, showOk: true, showTryAgain: true) { shouldTryAgain in
                         if shouldTryAgain {
@@ -91,14 +77,10 @@ final class MountingProgress: ObservableObject {
                     self.coolisMounted = true
                     self.checkforMounted()
                 }
-                self.mountingThread = nil
+            } catch {
+                showAlert(title: "DDI Unavailable", message: error.localizedDescription, showOk: true)
             }
         }
-
-        thread.qualityOfService = .background
-        thread.name = "mounting"
-        thread.start()
-        mountingThread = thread
     }
 }
 
