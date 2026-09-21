@@ -34,6 +34,9 @@ jobs:
           swift test
           python3 -m unittest discover -s Tests -p 'test_*.py'
 
+      - name: Prepare idevice with Cryptex mounting support
+        run: python3 scripts/prepare_idevice.py
+
       - name: Refresh Apple hardware support
         run: xcodebuild -runFirstLaunch -checkForNewerComponents
 

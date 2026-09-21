@@ -98,3 +98,6 @@ iOSInjectionProject/
 .build/
 .swiftpm/
 __pycache__/
+
+# Restored from a checksum-pinned official release by scripts/prepare_idevice.py.
+StikDebug/idevice/libidevice_ffi.a
